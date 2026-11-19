@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Descanso entre séries</title>
+<style>
+:root{
+  --bg:#f3f5f0; --surface:#ffffff; --ink:#16201a; --muted:#5d6b62;
+  --rest:#1f6f4a; --ready:#c2410c; --track:#dfe6dc;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#101612; --surface:#18211b; --ink:#eef3ec; --muted:#9aaa9f;
+    --rest:#4fc38a; --ready:#fb923c; --track:#27342b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#101612; --surface:#18211b; --ink:#eef3ec; --muted:#9aaa9f;
+  --rest:#4fc38a; --ready:#fb923c; --track:#27342b;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:"Avenir Next","Trebuchet MS",system-ui,sans-serif;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:24px;text-align:center}
+.counts{display:flex;gap:40px}
+.counts div{font-size:1.1rem;color:var(--muted)}
+.counts b{display:block;font-size:4rem;line-height:1;color:var(--ink);font-weight:700;margin-top:4px}
+.counts small{font-size:.95rem}
+.ring{position:relative;width:min(66vw,280px);aspect-ratio:1}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:12}
+.t{stroke:var(--track)}
+.p{stroke:var(--rest);stroke-linecap:round;transition:stroke-dashoffset .25s linear,stroke .2s}
+.ring.done .p{stroke:var(--ready)}
+.time{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-size:3.4rem;font-weight:700;font-variant-numeric:tabular-nums}
+.time small{font-size:1rem;font-weight:500;color:var(--muted);margin-top:4px;padding:0 24px}
+.ring.done .time{color:var(--ready)}
+.btns{display:flex;flex-direction:column;gap:12px;width:min(86vw,340px)}
+button{font:inherit;font-size:1.15rem;font-weight:600;padding:16px;border-radius:14px;border:2px solid var(--ink);
+  background:var(--surface);color:var(--ink);cursor:pointer}
+button.main{background:var(--rest);border-color:var(--rest);color:#fff}
+button:focus-visible{outline:3px solid var(--ready);outline-offset:2px}
+button.link{border:none;background:none;color:var(--muted);font-size:1rem;font-weight:500;padding:8px}
+</style>
+</head>
+<body>
+<div class="counts">
+  <div>Séries<b id="sets">0</b><small>de 4</small></div>
+  <div>Exercícios<b id="ex">0</b><small>concluídos</small></div>
+</div>
+
+<div class="ring" id="ring">
+  <svg viewBox="0 0 120 120" aria-hidden="true">
+    <circle class="t" cx="60" cy="60" r="54"/>
+    <circle class="p" id="p" cx="60" cy="60" r="54"/>
+  </svg>
+  <div class="time"><span id="time">1:00</span><small id="msg">Pronto para descansar</small></div>
+</div>
+
+<div class="btns">
+  <button class="main" id="go">Terminei a série</button>
+  <button id="skip" hidden>Pular descanso</button>
+  <button class="link" id="reset">Zerar tudo</button>
+</div>
+
+<script>
+const TOTAL = 60, PER_EX = 4, C = 2 * Math.PI * 54;
+let sets = 0, ex = 0, left = TOTAL, timer = null, endAt = 0;
+const $ = id => document.getElementById(id);
+const p = $("p"); p.style.strokeDasharray = C;
+
+function draw(){
+  const s = Math.max(0, Math.ceil(left));
+  $("time").textContent = Math.floor(s/60) + ":" + String(s%60).padStart(2,"0");
+  p.style.strokeDashoffset = C * (1 - left/TOTAL);
+  $("sets").textContent = sets;
+  $("ex").textContent = ex;
+}
+function beep(n){
+  try{
+    const a = new (window.AudioContext||window.webkitAudioContext)();
+    for(let i=0;i<n;i++){
+      const o=a.createOscillator(), g=a.createGain();
+      o.connect(g); g.connect(a.destination);
+      o.frequency.value=880; g.gain.value=0.2;
+      o.start(a.currentTime+i*0.3); o.stop(a.currentTime+i*0.3+0.18);
+    }
+  }catch(e){}
+  try{ navigator.vibrate && navigator.vibrate([200,100,200]); }catch(e){}
+}
+function stop(){ clearInterval(timer); timer = null; }
+function idle(){
+  stop(); left = TOTAL;
+  $("ring").classList.remove("done");
+  $("msg").textContent = "Pronto para descansar";
+  $("go").textContent = "Terminei a série";
+  $("skip").hidden = true;
+  draw();
+}
+function finish(){
+  stop(); left = 0; draw();
+  $("ring").classList.add("done");
+  $("msg").textContent = "Hora da próxima série!";
+  $("go").textContent = "Terminei a série";
+  $("skip").hidden = true;
+  beep(3);
+}
+function start(){
+  stop(); sets++;
+  let msg = "Descansando";
+  if(sets >= PER_EX){ ex++; sets = 0; msg = "Exercício concluído! Descansando"; }
+  left = TOTAL; endAt = Date.now() + TOTAL*1000;
+  $("ring").classList.remove("done");
+  $("msg").textContent = msg;
+  $("go").textContent = "Terminei outra série";
+  $("skip").hidden = false;
+  draw();
+  timer = setInterval(()=>{
+    left = (endAt - Date.now())/1000;
+    if(left <= 0) finish(); else draw();
+  }, 200);
+}
+$("go").onclick = start;
+$("skip").onclick = idle;
+$("reset").onclick = ()=>{ sets = 0; ex = 0; idle(); };
+draw();
+</script>
+</body>
+</html>
